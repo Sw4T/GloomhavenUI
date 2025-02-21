@@ -3,6 +3,7 @@ import tkinter as tk
 from tkinter import ttk
 from PIL import Image, ImageTk
 import os
+import utils_img
 
 # Connexion à la base de données SQLite
 def connect_db():
@@ -144,26 +145,32 @@ class JeuGUI:
 
     def update_health_bar(self, canvas, pv, max_pv):
         """Met à jour la barre de PV avec un dégradé dynamique en fonction du max des PV."""
-        percentage = max(0, min(1, pv / max_pv))  # Assure que le ratio est entre 0 et 1
-        red = int((1 - percentage) * 255)
-        green = int(percentage * 255)
-        color = f"#{red:02X}{green:02X}00"
         canvas.delete("all")
-        canvas.create_rectangle(0, 0, int(100 * percentage), 10, fill=color, outline=color)
+        if pv <= 0:
+            canvas.create_rectangle(0, 0, 0, 10, fill=f"#000000", outline=f"#000000")
+        else:
+            percentage = max(0, min(1, pv / max_pv))  # Assure que le ratio est entre 0 et 1
+            red = int((1 - percentage) * 255)
+            green = int(percentage * 255)
+            color = f"#{red:02X}{green:02X}00"
+            canvas.create_rectangle(0, 0, int(100 * percentage), 10, fill=color, outline=color)
     
     def modifier_pv(self, pv_label, health_bar, numero, valeur, max_pv):
-        """Modifie les points de vie d'un ennemi et met à jour l'affichage."""
+        """Modifie les points de vie d'un ennemi et met à jour l'affichage."""     
         self.cursor.execute("UPDATE ennemis_combat SET pv = pv + ? WHERE numero = ?", (valeur, numero))
         self.conn.commit()
         self.cursor.execute("SELECT pv FROM ennemis_combat WHERE numero = ?", (numero,))
         nouveau_pv = self.cursor.fetchone()[0]
-        pv_label.config(text=f"❤️ {nouveau_pv}")
-        self.update_health_bar(health_bar, nouveau_pv, max_pv)
-    
+        if nouveau_pv >= 0:
+            pv_label.config(text=f"❤️ {nouveau_pv}")
+            self.update_health_bar(health_bar, nouveau_pv, max_pv)
+
     def afficher_carte_sur_battlefield(self, nom, numero):
         """Affiche une carte ennemi sur le battlefield avec un alignement grid et gestion des PV."""
         self.cursor.execute("SELECT mouvement, attaque, pv FROM ennemis_combat WHERE numero = ?", (numero,))
         ennemi = self.cursor.fetchone()
+        max_longueur_carte = 150
+        max_hauteur_carte = 225
         
         if ennemi:
             mouvement, attaque, pv = ennemi
@@ -171,15 +178,26 @@ class JeuGUI:
             nom_sans_elite = nom.replace(" ELITE", "")  # Supprime "ELITE" de l'affichage
             
             card_frame = tk.Frame(self.root, bg="#2C2F33", bd=2, relief=tk.RIDGE)
+            # Affichage du nom
             card_frame.pack(padx=10, pady=10)
             
-            card_canvas = tk.Canvas(card_frame, width=200, height=300, bg='#2C2F33', highlightthickness=0)
+            
+            card_canvas = tk.Canvas(card_frame, width=max_longueur_carte, height=max_hauteur_carte, bg='#2C2F33', highlightthickness=0)
             card_canvas.pack()
-            card_canvas.create_rectangle(5, 5, 195, 295, outline="white", width=2)
+            card_canvas.create_rectangle(5, 5, max_longueur_carte, 295, outline="white", width=2)
             card_canvas.create_text(100, 30, text=nom_sans_elite, font=("Arial", 14, "bold"), fill="white")
             
             pv_label = tk.Label(card_frame, text=f"❤️ {pv}", bg="#2C2F33", fg="red", font=("Arial", 12, "bold"))
             pv_label.pack()
+            
+            # Charger l'image avec Pillow
+            if nom == "Polo":
+               image = utils_img.resize_image(Image.open("img/red-guard.png"), max_longueur_carte, max_hauteur_carte)
+            else:
+               image = utils_img.resize_image(Image.open("img/voidwarden.png"), max_longueur_carte, max_hauteur_carte)     
+            photo = ImageTk.PhotoImage(image)
+            card_canvas.create_image(max_longueur_carte / 2, max_hauteur_carte / 2, image=photo) # Affichage au centre        
+            card_canvas.image = photo
             
             health_bar = tk.Canvas(card_frame, width=100, height=10, bg="#2C2F33", highlightthickness=0)
             health_bar.pack()
@@ -191,10 +209,7 @@ class JeuGUI:
             bouton_plus = ttk.Button(button_frame, text="+1", command=lambda: self.modifier_pv(pv_label, health_bar, numero, 1, max_pv), width=4)
             bouton_plus.grid(row=0, column=0, padx=2)
             bouton_moins = ttk.Button(button_frame, text="-1", command=lambda: self.modifier_pv(pv_label, health_bar, numero, -1, max_pv), width=4)
-            bouton_moins.grid(row=0, column=1, padx=2)
-            
-            # Suppression du grand rectangle inutile
-            card_canvas.config(height=250)  # Ajustement de la hauteur
+            bouton_moins.grid(row=0, column=1, padx=2)         
 
 
     def dessiner_carte(self, canvas, nom, numero, mouvement, attaque, pv, elite):
